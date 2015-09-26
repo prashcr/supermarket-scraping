@@ -1,12 +1,14 @@
 var request = require('request');
 var cheerio = require('cheerio');
-var fs = require('fs');
+var async = require('async');
+var mongoose = require('mongoose');
+
 var baseUrl = 'http://www3.consumer.org.hk/pricewatch/supermarket/';
+var mongodbUrl = 'mongodb://localhost/groceries';
 
 request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
   if (!err && res.statusCode == 200) {
     var $ = cheerio.load(html);
-    var parsedResults = [];
     // Get siblings of the header row of the table
     var items = $('tr[bgcolor=#FED785]').siblings();
     items.each(function(i, el) {
@@ -20,22 +22,8 @@ request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
       var marketplace = $(cols).eq(6);
       var aeon = $(cols).eq(7);
       var dch = $(cols).eq(8);
-      parsedResults.push({
-        url: baseUrl + product.find('a').attr('href') + '&lang=en',
-        category: category.text(),
-        brand: brand.text(),
-        product: product.text(),
-        wellcome: priceData(wellcome),
-        parknshop: priceData(parknshop),
-        marketplace: priceData(marketplace),
-        aeon: priceData(aeon),
-        dch: priceData(dch)
-      });
+      var url = product.find('a').attr('href');
     });
-    fs.writeFile('prices.json', JSON.stringify(parsedResults), function(err) {
-      if (err) return console.log(err);
-      console.log(parsedResults.length+' documents were dumped successfully');
-    })
   }
 });
 
@@ -43,7 +31,7 @@ request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
 function priceData (price) {
   if (price.text() == '--') return null;
   return {
-    price: price.text().trim().replace(' ', ''),
+    price: price.text().trim().replace(' ', '').substring(1),
     discount: Boolean(price.find('a').attr('href'))
   };
 }
