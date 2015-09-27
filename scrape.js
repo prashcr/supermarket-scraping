@@ -11,14 +11,14 @@ var productSchema = new mongoose.Schema({
   brand: String,
   // Queries will usually be on _id or category
   category: { type: String, index: true },
-  prices: [{
+  prices: [new mongoose.Schema({
     date: Date,
     wellcome: { price: String, discount: Boolean },
     parknshop: { price: String, discount: Boolean },
     marketplace: { price: String, discount: Boolean },
     aeon: { price: String, discount: Boolean },
     dch: { price: String, discount: Boolean }
-  }]
+  }, {_id: false})]
 });
 
 var Product = mongoose.model('Product', productSchema);
@@ -26,18 +26,21 @@ mongoose.connect('mongodb://localhost/groceries');
 mongoose.connection.on('error', function() {
   console.error('MongoDB Connection Error. Make Sure MongoDB is running.');
 });
+mongoose.connection.on('open', function() {
+  console.log('Connected to MongoDB successfully.')
+});
 
-var timerId = setInterval(main, 15000);
+var timerId = setInterval(main, 20000);
 
 // Extract data and push it to MongoDB
 function main() {
   request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
     if (!err && res.statusCode == 200) {
       var $ = cheerio.load(html);
-      console.log('HTML loaded');
+      console.log('Loaded HTML');
       // Get siblings of the table's header row
       var items = $('tr[bgcolor=#FED785]').siblings();
-      console.log(items.length +' products parsed');
+      console.log('Parsed '+items.length+' products');
       var tasks = []; // Collect updates for async.parallel
       items.each(function(i, el) {
         var cols = $(el).children();
@@ -76,27 +79,26 @@ function main() {
       async.parallel(
         tasks,
         function(err, results) {
-          console.log(results.length+' items successfully upserted');
+          console.log('Upserted '+results.length+' products');
         });
     }
   });
 }
 
-// Constructor can handle case where all price fields are empty
+// XXX: Custom constructor for price schema instead of Model
 function Price(wellcome, parknshop, marketplace, aeon, dch) {
   this.date = Date.now();
-  this.wellcome = priceData(wellcome);
-  this.parknshop = priceData(parknshop);
-  this.marketplace = priceData(marketplace);
-  this.aeon = priceData(aeon);
-  this.dch = priceData(dch);
+  this.wellcome = normalizePriceData(wellcome);
+  this.parknshop = normalizePriceData(parknshop);
+  this.marketplace = normalizePriceData(marketplace);
+  this.aeon = normalizePriceData(aeon);
+  this.dch = normalizePriceData(dch);
   if (!(this.wellcome || this.parknshop || this.marketplace || this.aeon || this.dch)) {
     return undefined; // Mongoose ignores undefined fields
   }
 }
 
-// Normalize price data
-function priceData (price) {
+function normalizePriceData (price) {
   if (price.text() == '--') return undefined; // Mongoose ignores undefined fields
   return {
     price: price.text().trim().replace(' ', '').substring(1),
