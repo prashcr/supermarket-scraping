@@ -29,12 +29,13 @@ mongoose.connection.on('error', function() {
 
 request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
   if (!err && res.statusCode == 200) {
-    var $ = cheerio.load(html); // Cheerio provides JQuery-like interface to DOM
+    var $ = cheerio.load(html);
     console.log('HTML loaded');
     // Get siblings of the table's header row
     var items = $('tr[bgcolor=#FED785]').siblings();
     console.log(items.length +' products parsed');
-    // For each item, extract data and upsert
+    // For each item, extract data and collect updates
+    var tasks = [];
     items.each(function(i, el) {
       var cols = $(el).children();
       var category = $(cols).eq(1);
@@ -47,10 +48,10 @@ request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
       var marketplace = $(cols).eq(6);
       var aeon = $(cols).eq(7);
       var dch = $(cols).eq(8);
-      // If query matches, update
-      // Otherwise, insert document created by combining query and update fields
-      // TODO: use async.parallel so we know when all updates have completed
-      Product.update(
+      tasks.push(function(callback) {
+        // If query matches, update
+        // Otherwise, insert document created by combining fields from query and update
+        Product.update(
         {
           _id: itemcode,
           name: name.text(),
@@ -63,11 +64,17 @@ request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
           }
         },
         {upsert: true},
-        function(e) {
+        function(e, res) {
           if (e) return console.log(e);
-          console.log('upsert '+i+' successful');
+          callback(null, res);
         });
+      });
     });
+    async.parallel(
+      tasks,
+      function(err, results) {
+        console.log(results.length+' items successfully upserted');
+      });
   }
 });
 
