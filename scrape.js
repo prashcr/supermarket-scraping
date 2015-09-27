@@ -55,21 +55,27 @@ function main() {
         var aeon = $(cols).eq(7);
         var dch = $(cols).eq(8);
         var price = Price(wellcome, parknshop, marketplace, aeon, dch);
-        tasks.push(function(callback) {
-          Product.update(
-          {
-            _id: itemcode,
-            name: name.text(),
-            brand: brand.text(),
-            category: category.text()
-          },
-          updatePrice(price),
-          {upsert: true},
-          function(e, res) {
-            if (e) return console.log(e);
-            callback(null, res);
+        if (price) {
+          tasks.push(function(callback) {
+            Product.update(
+            {
+              _id: itemcode,
+              name: name.text(),
+              brand: brand.text(),
+              category: category.text()
+            },
+            {
+              $push: {
+                prices: price
+              }
+            },
+            {upsert: true},
+            function(e, res) {
+              if (e) return console.log(e);
+              callback(null, res);
+            });
           });
-        });
+        }
       });
       async.parallel(
         tasks,
@@ -80,17 +86,7 @@ function main() {
   });
 }
 
-// XXX: Avoid upsert if price is empty
-function updatePrice(price) {
-  if (!price) return {};
-  return {
-    $push: {
-      prices: price
-    }
-  };
-}
-
-// XXX: Custom factory for price schema instead of Model
+// XXX: Custom factory for price schema instead of Mongoose Model
 function Price(wellcome, parknshop, marketplace, aeon, dch) {
   wellcome = normalizePriceData(wellcome);
   parknshop = normalizePriceData(parknshop);
