@@ -12,7 +12,7 @@ var productSchema = new mongoose.Schema({
   // Queries will usually be on _id or category
   category: { type: String, index: true },
   prices: [{
-    date: { type: Date, default: Date.now },
+    date: Date,
     wellcome: { price: String, discount: Boolean },
     parknshop: { price: String, discount: Boolean },
     marketplace: { price: String, discount: Boolean },
@@ -27,59 +27,64 @@ mongoose.connection.on('error', function() {
   console.error('MongoDB Connection Error. Make Sure MongoDB is running.');
 });
 
-request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
-  if (!err && res.statusCode == 200) {
-    var $ = cheerio.load(html);
-    console.log('HTML loaded');
-    // Get siblings of the table's header row
-    var items = $('tr[bgcolor=#FED785]').siblings();
-    console.log(items.length +' products parsed');
-    // For each item, extract data and collect updates
-    var tasks = [];
-    items.each(function(i, el) {
-      var cols = $(el).children();
-      var category = $(cols).eq(1);
-      var brand = $(cols).eq(2);
-      var name = $(cols).eq(3);
-      // Store id portion of product url
-      var itemcode = name.find('a').attr('href').substring(20);
-      var wellcome = $(cols).eq(4);
-      var parknshop = $(cols).eq(5);
-      var marketplace = $(cols).eq(6);
-      var aeon = $(cols).eq(7);
-      var dch = $(cols).eq(8);
-      tasks.push(function(callback) {
-        // If query matches, update
-        // Otherwise, insert document created by combining fields from query and update
-        Product.update(
-        {
-          _id: itemcode,
-          name: name.text(),
-          brand: brand.text(),
-          category: category.text()
-        },
-        {
-          $push: {
-            prices: new Price(wellcome, parknshop, marketplace, aeon, dch)
-          }
-        },
-        {upsert: true},
-        function(e, res) {
-          if (e) return console.log(e);
-          callback(null, res);
+var timerId = setInterval(main, 15000);
+
+// Extract data and push it to MongoDB
+function main() {
+  request(baseUrl + 'index.php?keyword=&lang=en', function(err, res, html) {
+    if (!err && res.statusCode == 200) {
+      var $ = cheerio.load(html);
+      console.log('HTML loaded');
+      // Get siblings of the table's header row
+      var items = $('tr[bgcolor=#FED785]').siblings();
+      console.log(items.length +' products parsed');
+      var tasks = []; // Collect updates for async.parallel
+      items.each(function(i, el) {
+        var cols = $(el).children();
+        var category = $(cols).eq(1);
+        var brand = $(cols).eq(2);
+        var name = $(cols).eq(3);
+        // Store id portion of product url
+        var itemcode = name.find('a').attr('href').substring(20);
+        var wellcome = $(cols).eq(4);
+        var parknshop = $(cols).eq(5);
+        var marketplace = $(cols).eq(6);
+        var aeon = $(cols).eq(7);
+        var dch = $(cols).eq(8);
+        tasks.push(function(callback) {
+          // If query matches, update
+          // Otherwise, insert document created by combining fields from query and update
+          Product.update(
+          {
+            _id: itemcode,
+            name: name.text(),
+            brand: brand.text(),
+            category: category.text()
+          },
+          {
+            $push: {
+              prices: new Price(wellcome, parknshop, marketplace, aeon, dch)
+            }
+          },
+          {upsert: true},
+          function(e, res) {
+            if (e) return console.log(e);
+            callback(null, res);
+          });
         });
       });
-    });
-    async.parallel(
-      tasks,
-      function(err, results) {
-        console.log(results.length+' items successfully upserted');
-      });
-  }
-});
+      async.parallel(
+        tasks,
+        function(err, results) {
+          console.log(results.length+' items successfully upserted');
+        });
+    }
+  });
+}
 
 // Constructor can handle case where all price fields are empty
 function Price(wellcome, parknshop, marketplace, aeon, dch) {
+  this.date = Date.now();
   this.wellcome = priceData(wellcome);
   this.parknshop = priceData(parknshop);
   this.marketplace = priceData(marketplace);
