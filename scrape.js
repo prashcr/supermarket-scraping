@@ -54,9 +54,8 @@ function main() {
         var marketplace = $(cols).eq(6);
         var aeon = $(cols).eq(7);
         var dch = $(cols).eq(8);
+        var price = Price(wellcome, parknshop, marketplace, aeon, dch);
         tasks.push(function(callback) {
-          // If query matches, update
-          // Otherwise, insert document created by combining fields from query and update
           Product.update(
           {
             _id: itemcode,
@@ -64,11 +63,7 @@ function main() {
             brand: brand.text(),
             category: category.text()
           },
-          {
-            $push: {
-              prices: new Price(wellcome, parknshop, marketplace, aeon, dch)
-            }
-          },
+          updatePrice(price),
           {upsert: true},
           function(e, res) {
             if (e) return console.log(e);
@@ -85,17 +80,34 @@ function main() {
   });
 }
 
-// XXX: Custom constructor for price schema instead of Model
+// XXX: Avoid upsert if price is empty
+function updatePrice(price) {
+  if (!price) return {};
+  return {
+    $push: {
+      prices: price
+    }
+  };
+}
+
+// XXX: Custom factory for price schema instead of Model
 function Price(wellcome, parknshop, marketplace, aeon, dch) {
-  this.date = Date.now();
-  this.wellcome = normalizePriceData(wellcome);
-  this.parknshop = normalizePriceData(parknshop);
-  this.marketplace = normalizePriceData(marketplace);
-  this.aeon = normalizePriceData(aeon);
-  this.dch = normalizePriceData(dch);
-  if (!(this.wellcome || this.parknshop || this.marketplace || this.aeon || this.dch)) {
-    return undefined; // Mongoose ignores undefined fields
+  wellcome = normalizePriceData(wellcome);
+  parknshop = normalizePriceData(parknshop);
+  marketplace = normalizePriceData(marketplace);
+  aeon = normalizePriceData(aeon);
+  dch = normalizePriceData(dch);
+  if (!(wellcome || parknshop || marketplace || aeon || dch)) {
+    return undefined;
   }
+  return {
+    date: Date.now(),
+    wellcome: wellcome,
+    parknshop: parknshop,
+    marketplace: marketplace,
+    aeon: aeon,
+    dch: dch
+  };
 }
 
 function normalizePriceData (price) {
